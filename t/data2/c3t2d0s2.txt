@@ -1,0 +1,19 @@
+* /dev/dsk/c3t1d0s2 partition map
+*
+* Dimensions:
+*     512 bytes/sector
+*     107 sectors/track
+*      27 tracks/cylinder
+*    2889 sectors/cylinder
+*   24622 cylinders
+*   24620 accessible cylinders
+*
+* Flags:
+*   1: unmountable
+*  10: read-only
+*
+*                          First     Sector    Last
+* Partition  Tag  Flags    Sector     Count    Sector  Mount Directory
+       0      2    00          0  70956729  70956728
+       1      4    01   70956729    170451  71127179
+       2      5    01          0  71127180  71127179

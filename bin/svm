@@ -1,0 +1,516 @@
+#!/usr/bin/perl -w
+
+use integer;
+use strict;
+use Getopt::Std;
+use Term::ANSIColor;
+use Solaris::Disk::SVM;
+
+use vars qw( $opt_c $opt_d $opt_i $opt_D $opt_h $debug $svm );
+
+=head1 NAME
+
+svm - manipulate, look in, create Solaris Volume Manager objects
+
+=head1 SYNOPSIS
+
+    svm [-c] [-D datadir] [-i id] command ...
+
+=head2 Options
+
+  [-D <datadir>] :         datadir is the director where the data will be read
+                           from
+  [-c] :                   turn coloured output on
+  [-h] :                   show this help text
+  [-i <newdevid>] :        use newdevid as new metadevice id
+                           instead of first avail.
+
+=head2 Commands
+
+  showpart               : show partitions of all the disks involved
+  getnextdev             : retrieve the next free device
+  isdevfree [d]num       : is the device <dnum> free ?
+  showconfig             : view all the config
+  showsp [<dev|slice>+]  : view all devices on device or slices
+  getphysdevs <dev>      : show physical device(s) underlying
+                           a SVM device
+  getsubdevs <dev>       : show underlying device(s) for a SVM device
+  explaindev <dev>       : tries to explain a SVM device in pure english
+
+  mpondev <dev>          : mount point on <dev>
+  mpondisk <disk>        : mount point on <disk> (in a form present
+                           in SVM)
+
+  devs4mp </mountpoint>  : what are the devices
+                           underlying a mount point
+  disks4mp </mountpoint> : what are the physical devices
+                           underlying a mount point
+
+=head1 DESCRIPTION
+
+F<svm> is a tool that reads from various sources your SDS/SVM configuration
+
+=cut
+
+my %Axis = (
+    3 => [ 8, 9, 10, 11, 12, 13 ],
+    4 => [ 8, 9, 10, 11, 12, 13 ]
+);
+
+# %Devices :     $Device{nom du device} = description texte
+# %LeafPhysDev : $LeafPhysDev{nom du device} = liste des devices physiques
+#                                              directement sous la structure
+# %SPContains :  $SPContains{nom du device} = liste des devices sur une SP
+# %SPDev :       $SPDev{nom du device} = nom du device où est taillée
+#                                        la soft partition
+# %SPOffset :    $SPOffset{nom du device} = offset
+# %SPSize :      $SPSize{nom du device} = taille
+# %DevType :     $DevType{nom du device} = type
+# %Explain :     $Explain{nom du device} = description en bon anglais
+# %SubElements : $SubElements{nom du device} = liste des sous-devices d*
+# %SoftPartitions:
+
+sub showaxis
+{
+    foreach ( keys %Axis ) {
+        printf "%3d : ", $_;
+        print join ( " ", @{ $Axis{$_} } ) . "\n";
+    }
+}
+
+# $1 = dev_id
+# $2 = axis
+# $3 = size
+# [$4] = mountpoint
+# to make a mirror, we have to :
+# - make a soft part
+# - make concat/dev containing the soft part
+# - use two of these in a mirror
+# axis : 0..number of disks
+# side : 0..1
+# d40+5*n : mirror device
+# d40+5*n + (side*2) + 1 : concat/stripe device lying on +2
+# d40+5*n + (side*2) + 2 : soft partition
+# make both soft parts
+sub mkmirror
+{
+    my $dev_id     = shift;
+    my $axis       = shift;
+    my $size       = shift;
+    my $mountpoint = shift;    # as forcement renseigne
+    if ( defined($mountpoint) && $mountpoint !~ /^\/.*/ ) {
+        undef $mountpoint;
+    }
+
+    foreach ( 0 .. 4 ) {
+        my $testid = $dev_id + $_;
+        if ( !isdevfree($testid) ) {
+            print "#!! WARNING : device d$testid not free, aborting\n";
+            exit 1;
+        }
+    }
+
+    my @concats;
+    my $i;
+    foreach $i ( 0 .. 1 ) {    # pans de mirroir
+        my $concat   = $dev_id + $i * 2 + 1;
+        my $softpart = $dev_id + $i * 2 + 2;
+        print "#### concat $i = $concat"     if $debug;
+        print "#### softpart $i = $softpart" if $debug;
+
+        # softpart
+        my @Ctrls = keys %Axis;
+        my @Disks = @{ $Axis{ $Ctrls[$i] } };
+        print "metainit d$softpart -p c$Ctrls[$i]t$Disks[$axis]d0s0 $size\n";
+
+        # concat on soft part
+        print "metainit d$concat 1 1 d$softpart\n";
+        $concats[$i] = $concat;
+    }
+
+    # mirror itself
+    print "metainit d$dev_id -m d$concats[0]\n";
+    print "#metattach d$dev_id  d$concats[1]\n";
+
+    print "newfs /dev/md/dsk/d$dev_id\n";
+    if ( defined($mountpoint) ) {
+        print "mkdir $mountpoint\n";
+        print "mount /dev/md/dsk/d$dev_id $mountpoint\n";
+    }
+}
+
+sub test
+{
+    #print "Commande = $command\n";
+    #my ($axe, $disques, $disk);
+    #while (($axe, $disques) = each(%Axis)) {
+    #  while ($disk = shift @disques)
+    #  print "Axis $axe : $disk\n";
+    #    foreach $disk (@$disques) {
+    #      print $axe." ".$disk."\n" if $debug;
+    #    }
+    #  }
+}
+
+sub say_usage
+{
+    my $version = Solaris::Disk::SVM->version;
+    print "svm by Jérôme Fenal\n";
+    print "Version: $version\n";
+    print "\n\t$0  [opts] command ...\n\n";
+    print << "EOT";
+Options:
+  [-D <datadir>]       : search this dir for all above files
+  [-c]                   : turn coloured output on
+  [-h]                   : show this help text
+  [-i <newdevid>]        : use newdevid as new metadevice id
+                           instead of first avail.
+
+Commands:
+  showpart               : show partitions of all the disks involved
+  getnextdev             : retrieve the next free device
+  isdevfree [d]num       : is the device <dnum> free ?
+  showconfig             : view all the config
+  showsp [<dev|slice>+]  : view all devices on device or slices
+  getphysdevs <dev>      : show physical device(s) underlying a SVM device
+  getsubdevs <dev>       : show underlying device(s) for a SVM device
+  explaindev <dev>       : tries to explain a SVM device in pure english
+
+  mpondev <dev>          : mount point on <dev>
+  mpondisk <disk>        : mount point on <disk> (in a form present in SVM)
+  devs4mp </mountpoint>  : what are the devices underlying a mount point
+  disks4mp </mountpoint> : what are the physical devices under a mount point
+
+EOT
+    exit 0;
+}
+
+# Main
+
+getopts('cdi:D:h');
+
+# Sets opt_* as a side effect.
+
+say_usage() if $opt_h;
+
+my $NewDeviceID =
+  $opt_i;    # when creating a device, we'll either use the last one
+             # not used, or the one specified by the user
+
+$debug = 1 if ($opt_d);
+
+my $command = shift;    # commande (showpart, etc)
+print "Commmand : $command \n" if $debug;
+
+say_usage() unless defined($command);
+
+# Here begins the meat of main.
+
+# Allocate
+
+$svm = Solaris::Disk::SVM->new;
+
+$svm->{vtoc}->readvtocdir( $opt_D ) if defined $opt_D;
+
+$svm->{mnttab}->readmtab(
+    (defined $opt_D ? ( mnttab => "$opt_D/mnttab.txt" ) : () )
+);
+$svm->{mnttab}->readstab(
+    (defined $opt_D ? ( swaptab => "$opt_D/swaptab.txt" ) : () )
+);
+
+$svm->readconfig( 
+    ( $opt_D ? ( metastatp => "$opt_D/metastat-p.txt" ) : () ),
+);
+
+$svm->{colour}++ if $opt_c;
+
+=head2 Commands giving information about SVM config
+
+=cut 
+for ($command) {
+
+=head3 C<explaindev> device
+
+C<explaindev> prints a plain english description of the device.
+
+=cut
+    /explaindev/ and do {
+        my $dev = shift @ARGV;
+        $svm->explaindev($dev) if defined $svm->{Devices}{$dev};
+        last;
+    };
+=head3 C<getsize> device
+
+C<getsize> prints the size of a device.
+
+=cut
+    /getsize/ and do {
+        my $dev = shift @ARGV;
+        if (defined $svm->{devices}{$dev} ) {
+            my $size = $svm->size($dev);
+            $size >>= 11;
+            print "Taille de $dev : $size Mo\n";
+        }
+        last;
+    };
+
+=head3 C<showconfig>
+
+C<showconfig> essentially prints the C<explaindev> string for all devices in the
+SVM configuration.
+
+=cut
+    /showconfig/ and do { $svm->showconfig(); last; };
+
+=head3 C<getphysdev> device [device...]
+
+C<getphysdev> prints out the physical device(s) underlying an SVM device.
+
+=cut
+    /getphysdevs/ and do {
+        my $dev = shift @ARGV;
+
+        print join ( " ", $svm->getphysdev($dev) ) . "\n";
+        last;
+    };
+
+=head3 C<getnextdev>
+
+C<getnextdev> prints out the next free device. It does not take into account
+holes in the device list.
+
+=cut
+    /getnextdev/ and do { print $svm->getnextdev() . "\n"; last; };
+
+=head3 C<isdevfree> device
+
+C<isdevfree> prints the status (free or not free) for the given device.
+
+=cut
+    /isdevfree/ and do {
+        my $dev = shift @ARGV;
+        print "$dev is " . $svm->isdevfree($dev) ? "free" : "not free";
+        last;
+    };
+
+=head3 C<showpart> disk
+
+C<showpart> prints out the partitions for the specified disk(s). If no disk is
+specified, all disks partitions are printed.
+
+=cut
+    /showpart/ and do {
+        my @partitions = ( @ARGV == -1 )
+                       ? (keys %{$svm->{vtoc}})
+                       : @ARGV;
+        $svm->{vtoc}->show( @partitions );
+        last;
+    };
+    
+=head3 C<showsp> softpart_container
+
+C<showsp> prints out the soft partitions for the specified soft partition
+container. If no container is specified, all soft-partitions for all containers
+(either device or disk slice) are printed.
+
+=cut
+    /showsp/ and do {
+        my @sps = ( @ARGV == -1 ) ? keys %{$svm->{SPContains}} : @ARGV;
+        $svm->showsp( @sps );
+        last;
+    };
+
+=head3 C<getsubdevs> device
+
+C<getsubdevs> prints the list of devices underlying those passed as argument(s).
+Only one level deep.
+       
+=cut
+    /getsubdevs/ and do {
+        my $dev  = shift @ARGV;
+        my @sdev = getsubdevs($dev);
+        print "Sub-element for $dev :", joinr( " ", @sdev ) . "\n";
+        last;
+    };
+
+=head3 C<mpondisk> disk
+
+FIXME
+C<mpondisk> prints the list of the filesystem present on a physical disk.
+
+=cut
+   /mpondisk/ and do {
+        my $disk = shift @ARGV;
+        my @mps;
+        if (@mps = $svm->mpondisk($disk)) {
+            print "$disk:" . join ( " ", @mps ) . "\n";
+        } else {
+            print "$disk not in SVM config\n";
+        }
+        last;
+    };
+
+=head3 C<mpondev>
+
+C<mpondev> prints the mountpoint(s) on a specified device.
+
+=cut
+    /mpondev/ and do {
+        my $dev = shift @ARGV;
+        my @mps;
+        if (@mps = $svm->mpondev($dev) ) {
+            print "$dev: " . join(" ", @mps) . "\n";
+        } else {
+            print "$dev not in SVM config or no mount point for $dev\n";
+        }
+
+        last;
+    };
+    
+=head3 C<devs4mp>
+
+C<devs4mp> returns the device(s) sustaining the specified mount point.
+
+=cut
+    /devs4mp/ and do {
+        my $mp = shift @ARGV;
+        my @devs;
+        if (@devs = $svm->devs4mp($mp) ) {
+            print "$mp " . join(" ", @devs) . "\n";
+        } else {
+            print "$mp not in SVM config\n";
+        }
+
+        last;
+    };
+
+=head3 C<disks4mp>
+
+C<disks4mp> returns the device(s) sustaining the specified mount point.
+
+=cut
+    /disks4mp/ and do {
+        my $mp = shift @ARGV;
+        my @disks;
+        if (@disks = $svm->disks4mp($mp) ) {
+            print "$mp " . join(" ", @disks) . "\n";
+        } else {
+            print "$mp not in SVM config\n";
+        }
+
+        last;
+    };
+
+#=head2 Volume creation commands
+#
+#Be careful with these, they may completly break your configuration,
+#data, etc.
+#
+#Avoid using them without having read the source. Period.
+#
+#=head3 C<showaxis>
+#
+#C<showaxis> show the content of the paired disks you configured into
+#svm(1) to format (label, partition) as soft-partition containers,
+#where you will then create soft-partitions based mirrors.
+#
+#=cut
+#    /showaxis/ and do { showaxis; last; };
+#    
+#=head3 C<mkmirror>
+#
+#    mkmirror <axis> <size> [<mp>] : make mirror on specified axis
+#        axis : from $o showaxis
+#        size : see man metainit (section Soft Partitions)
+#        mp   : mount point (optional)
+#
+#        <dev> has the form dnumber as in d1 or d165
+#        <slice> has the form cxtydzst as in c0t0d0s0
+#
+#
+#C<mkmirror> creates a mirror based on the axis.
+#
+#You need at least 5 consecutive free devices to create a
+#soft-partitions based mirror, because we have to:
+#
+# - make a soft part
+# - make concat/dev containing the soft part
+# - use two of these in a mirror
+#
+#The device numbering scheme begin at 40 to let you mirror your root
+#disks.
+#
+#C<d40+5*n> will be the mirror device.
+#
+#C<d40+5*n + (side*2) + 1> will be the concat/stripe devices lying on
+#+2 (side : 0..1)
+#
+#C<d40+5*n + (side*2) + 2> : soft partitions
+#
+#The scheme to create it is the
+#following (in ASCII art):
+#
+#             d40+5*n              mirror device
+#          /           \
+#     d40+5*n+1     d40+5*n+3      concat/stripes
+#         |             |
+#     d40+5*n+ 2    d40+5*n+4      soft-partitions
+#
+#=cut
+#    /mkmirror/ and do {
+#        if ( $#ARGV ne 1 && $#ARGV ne 2 ) {
+#            print "ERROR : mkmirror must have 2 or 3 args\n";
+#            say_usage();
+#        }
+#        mkmirror $NewDeviceID, @ARGV;
+#        last;
+#    };
+
+ 
+    /.*/ and do { say_usage(); last; };
+}
+
+__END__
+
+=head1 AUTHOR
+
+Jérôme Fenal <jfenal@free.fr> - http://jfenal.free.fr/Solaris/
+
+=head1 VERSION
+
+This is version 0.01 of the F<svm> script.
+
+=head1 COPYRIGHT
+
+Copyright (C) 2004 Jérôme Fenal. All Rights Reserved
+
+This module is free software; you can redistribute it and/or modify it under the
+same terms as Perl itself.
+
+=head1 SEE ALSO
+
+=over 
+
+=item *
+L<Solaris::Disk::SVM>
+
+in which you find this script.
+
+=item *
+L<Solaris::Disk::Partitions> 
+
+is used to get raw disk partitions.
+
+=item *
+L<Solaris::Disk::MountTable>
+
+is used to get current mounted devices.
+
+=item *
+SDS / SVM manual pages
+
+metastat(1M), metatool(1M), etc.
+
+=back
+

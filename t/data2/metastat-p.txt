@@ -1,0 +1,23 @@
+# metadevice configuration file
+# do not hand edit
+d1 -t d2 d50
+d2 -r c0t1d0s0 c0t2d0s0 c0t3d0s0 c2t1d0s0 c2t2d0s0 c2t3d0s0 c3t0d0s0 c3t3d0s0 -k -i 32b -o 6
+d50 -m d51 d52 1
+d51 1 1 c0t0d0s5
+d52 1 1 c2t0d0s5
+d10 -m d11 d12 1
+d11 1 1 c0t0d0s0
+d12 1 1 c2t0d0s0
+d20 -m d21 d22 1
+d21 1 1 c0t0d0s6
+d22 1 1 c2t0d0s6
+d30 -m d31 d32 1
+d31 1 1 c0t0d0s1
+d32 1 1 c2t0d0s1
+d40 -m d41 d42 1
+d41 1 1 c0t0d0s4
+d42 1 1 c2t0d0s4
+d60 -m d61 d62 1
+d61 1 1 c3t1d0s0
+d62 1 1 c3t2d0s0
+d3 -t d20 d40

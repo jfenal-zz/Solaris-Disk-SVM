@@ -1,0 +1,9 @@
+/dev/md/dsk/d10 /       ufs     rw,intr,largefiles,logging,onerror=panic,suid,dev=154000a       1090675716
+/proc   /proc   proc    dev=3f80000     1090675714
+fd      /dev/fd fd      rw,suid,dev=4040000     1090675719
+mnttab  /etc/mnttab     mntfs   dev=4140000     1090675721
+/dev/md/dsk/d3 /var    ufs     rw,intr,largefiles,logging,onerror=panic,suid,dev=154000d       1090675722
+swap    /var/run        tmpfs   dev=1   1090675722
+swap    /tmp    tmpfs   dev=2   1090675766
+/dev/md/dsk/d60 /ext   ufs     rw,intr,largefiles,logging,onerror=panic,suid,dev=154000f       1090675766
+/dev/md/dsk/d1 /export        ufs     rw,intr,largefiles,logging,onerror=panic,suid,dev=1540037       1090675766
