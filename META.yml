@@ -1,9 +1,10 @@
 --- #YAML:1.0
 name: Solaris-Disk-SVM
-version: 0.01
+version: 0.02
 author:
   - Jérôme Fenal <jfenal@free.fr>
-abstract: ~
+abstract: |-
+  Read, explore and manipulate SVM disk configurations
 license: perl
 requires:
   Carp: 0
@@ -16,5 +17,5 @@ recommends:
 provides:
   Solaris::Disk::SVM:
     file: lib/Solaris/Disk/SVM.pm
-    version: 0.01
-generated_by: Module::Build version 0.25
+    version: 0.02
+generated_by: Module::Build version 0.26

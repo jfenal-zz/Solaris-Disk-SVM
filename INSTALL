@@ -33,5 +33,5 @@ utility:
     $ su
     # perl Build install
 
-This module requires two other modules:
-Solaris::Disk::Partitions and Solaris::Disk::MountTable.
+This module requires two other modules: Solaris::Disk::VTOC and
+Solaris::Disk::Mnttab.

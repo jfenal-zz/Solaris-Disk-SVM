@@ -4,6 +4,6 @@ use lib qw( t/ );
 use dataconsistency;
 
 
-my $datadir = "t/data";
+my $datadir = "t/data1";
 
 checksvmcons( $datadir );

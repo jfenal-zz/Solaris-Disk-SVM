@@ -271,7 +271,7 @@ C<getphysdev> prints out the physical device(s) underlying an SVM device.
     /getphysdevs/ and do {
         my $dev = shift @ARGV;
 
-        print join ( " ", $svm->getphysdev($dev) ) . "\n";
+        print join ( " ", $svm->getphysdevs($dev) ) . "\n";
         last;
     };
 
@@ -329,8 +329,8 @@ Only one level deep.
 =cut
     /getsubdevs/ and do {
         my $dev  = shift @ARGV;
-        my @sdev = getsubdevs($dev);
-        print "Sub-element for $dev :", joinr( " ", @sdev ) . "\n";
+        my @sdev = $svm->getsubdevs($dev);
+        print "Sub-element for $dev :", join( " ", @sdev ) . "\n";
         last;
     };
 
@@ -377,7 +377,7 @@ C<devs4mp> returns the device(s) sustaining the specified mount point.
         my $mp = shift @ARGV;
         my @devs;
         if (@devs = $svm->devs4mp($mp) ) {
-            print "$mp " . join(" ", @devs) . "\n";
+            print "$mp: " . join(" ", @devs) . "\n";
         } else {
             print "$mp not in SVM config\n";
         }
@@ -483,7 +483,7 @@ This is version 0.01 of the F<svm> script.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2004 Jérôme Fenal. All Rights Reserved
+Copyright (C) 2004, 2005 Jérôme Fenal. All Rights Reserved
 
 This module is free software; you can redistribute it and/or modify it under the
 same terms as Perl itself.
@@ -498,12 +498,12 @@ L<Solaris::Disk::SVM>
 in which you find this script.
 
 =item *
-L<Solaris::Disk::Partitions> 
+L<Solaris::Disk::VTOC> 
 
 is used to get raw disk partitions.
 
 =item *
-L<Solaris::Disk::MountTable>
+L<Solaris::Disk::Mnttab>
 
 is used to get current mounted devices.
 

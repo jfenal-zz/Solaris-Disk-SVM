@@ -31,7 +31,7 @@ sub checksvmcons ($) {
         'pdev2mp'         => qr/^(?:c\d+t\d+d\d+s\d+)$/,
         'SPContains'      => qr/^(?:c\d+t\d+d\d+s\d+|d\d+)$/,
         'objtype'         =>
-          qr/(?:mirror|softpart|device|concat\+stripe|hotspare|raid5|trans)/,
+          qr/(?:mirror|softpart|device|stripe|concat|concat\+stripe|hotspare|raid5|trans)/,
         'PhysDevices4Dev' => qr/^d\d+$/,
     );
 

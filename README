@@ -5,5 +5,5 @@ Solaris::Disk::SVM aims to provide methods to read and
 manipulate Solaris Volume Manager (aka Solstice Disk Suite)
 objects.
 
-This module requires two other modules:
-Solaris::Disk::Partitions and Solaris::Disk::MountTable.
+This module requires two other modules: Solaris::Disk::VTOC and
+Solaris::Disk::Mnttab.
